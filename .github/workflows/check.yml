@@ -1,0 +1,29 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test and build
+        run: |
+          swift test -c release --force-resolved-versions
+          xcodebuild -project PrayBar.xcodeproj -scheme PrayBar -configuration Release \
+            -derivedDataPath build/check -clonedSourcePackagesDirPath .build/xcode-packages \
+            -onlyUsePackageVersionsFromResolvedFile build
+          codesign --verify --deep --strict build/check/Build/Products/Release/PrayBar.app
+          git diff --exit-code -- Package.resolved PrayBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved

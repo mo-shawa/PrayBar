@@ -1,0 +1,118 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Rehearsal version (for example 1.0.1); never publishes a release'
+        required: true
+        default: '1.0.1'
+        type: string
+permissions:
+  contents: read
+# Serialize releases so an older upload cannot race a newer one for /latest.
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'mo-shawa/PrayBar' && (github.event_name == 'push' || github.ref == 'refs/heads/main')
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: write
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release request
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == push ]]; then
+            [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+            version=${TAG#v}
+            git merge-base --is-ancestor HEAD origin/main
+            latest=$(gh release view --json tagName --jq .tagName)
+            python3 - "$version" "$latest" <<'PY'
+          import sys
+          requested = tuple(map(int, sys.argv[1].split('.')))
+          latest = tuple(map(int, sys.argv[2].removeprefix('v').split('.')))
+          if requested <= latest:
+              sys.exit('Release version must be newer than the current public release.')
+          PY
+          else
+            version=$INPUT_VERSION
+          fi
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          printf 'RELEASE_VERSION=%s\nBUILD_NUMBER=%s\n' "$version" "$((GITHUB_RUN_NUMBER + 1))" >> "$GITHUB_ENV"
+      - name: Run optimized tests
+        run: swift test -c release --force-resolved-versions
+      - name: Install signing credentials in a temporary keychain
+        env:
+          SIGNING_CERTIFICATE_P12: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+          NOTARIZATION_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: scripts/ci-signing.sh
+      - name: Build, sign, notarize and verify
+        env:
+          SIGNING_IDENTITY: ${{ vars.SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          NOTARY_PROFILE: PrayBarCI
+          NOTARY_KEYCHAIN_PATH: ${{ runner.temp }}/praybar-signing.keychain-db
+        run: scripts/release.sh "$RELEASE_VERSION" "$BUILD_NUMBER"
+      - name: Retain verified download for rehearsals and recovery
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: PrayBar-${{ env.RELEASE_VERSION }}-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build/distribution/PrayBar.dmg
+            build/distribution/PrayBar.dmg.sha256
+            build/distribution/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if existing=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            [[ "$existing" == true ]] || { echo 'Refusing to replace a published release.' >&2; exit 1; }
+          else
+            gh release create "$TAG" --verify-tag --draft --title "PrayBar $RELEASE_VERSION" \
+              --notes-file build/distribution/release-notes.md --generate-notes
+          fi
+          gh release upload "$TAG" build/distribution/PrayBar.dmg build/distribution/PrayBar.dmg.sha256 --clobber
+          gh release edit "$TAG" --draft=false --latest
+          gh release download "$TAG" --pattern 'PrayBar.dmg*' --dir "$RUNNER_TEMP/published"
+          (cd "$RUNNER_TEMP/published" && shasum -a 256 -c PrayBar.dmg.sha256)
+          cmp build/distribution/PrayBar.dmg "$RUNNER_TEMP/published/PrayBar.dmg"
+      - name: Retain build and notarization diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-diagnostics-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build/distribution/*.log
+            build/distribution/*.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/praybar-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/praybar-signing.p12"

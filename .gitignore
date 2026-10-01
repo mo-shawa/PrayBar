@@ -1,0 +1,22 @@
+.build/
+build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+build-*.log
+test-*.log
+
+# Signing material belongs in Keychain / GitHub encrypted secrets.
+*.p12
+*.p8
+*.key
+
+# Local working notes, diagnostic captures, and design/site scratch work.
+/DISTRIBUTION.md
+/VERIFICATION.md
+/docs/performance/
+/.claude/
+/design/
+/site/
+/.local-notes/
