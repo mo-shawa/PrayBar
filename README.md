@@ -48,11 +48,11 @@ AppKit owns the status item/menu. The SwiftUI Settings form exists only while it
 
 ## Releases
 
-Pushes to `main` and pull requests run tests and an app build. The release workflow supports full signing/notarization once the maintainer's encrypted `release` environment secrets are configured. Push a new version tag from a tested commit on `main`:
+Pushes to `main` and pull requests run tests and an app build. Official releases use the configured, encrypted `release` environment for Developer ID signing and Apple notarization. Push a new, unused version tag from a tested commit on `main` (increment the example version if it has already been released):
 
 ```sh
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
 The tag sets the app version automatically. The workflow signs, notarizes, checks Gatekeeper and the DMG's contents, generates a checksum, and publishes the GitHub release. The website follows the latest `PrayBar.dmg`. A manual **Release** workflow run on `main` rehearses the same process without publishing. Existing public releases are never overwritten.
