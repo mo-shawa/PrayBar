@@ -1,35 +1,52 @@
 # PrayBar
 
-A small, native prayer-time menu-bar app for **macOS 13+ on Apple Silicon**. See the next prayer at a glance, with a countdown or clock time. Prayer calculations run locally using [Adhan Swift](https://github.com/batoulapps/adhan-swift).
+Prayer times in your Mac's menu bar. PrayBar shows the next prayer and the time left, or its clock time, and lists today's five prayers when you click it. Times are calculated on your Mac with [Adhan Swift](https://github.com/batoulapps/adhan-swift).
+
+Requires macOS 13 or later on an Apple Silicon Mac.
 
 [Download for Mac](https://github.com/mo-shawa/PrayBar/releases/latest/download/PrayBar.dmg) · [Website](https://praybar.com) · [Release notes](https://github.com/mo-shawa/PrayBar/releases/latest)
 
 ## Install
 
-Open the DMG, drag **PrayBar** to **Applications**, then launch it. Published downloads are signed with Developer ID and notarized by Apple. To update, quit PrayBar and replace the app in Applications; saved settings remain.
+Open the DMG, drag **PrayBar** to **Applications**, and open it. Allow location access, or enter coordinates and a time zone in Settings. Downloads are signed with Developer ID and notarized by Apple.
 
-Allow automatic location or enter coordinates and a time zone in Settings. Once prayer times are available, an optional prompt shows the calculation defaults and offers Settings. Launch at login is recommended and starts unchecked.
+To update, quit PrayBar and replace the app in Applications. Your settings are kept.
 
-## Use
+## Using it
 
-- The menu bar shows the next prayer and remaining whole minutes by default. Settings can switch it to clock time.
-- Click it to see today's five prayer times, the active location/time zone, and Settings. After Isha, it shows tomorrow's Fajr. Sunrise is excluded.
-- Defaults are **Muslim World League** and **Standard Asr** (Shafi, Maliki, Hanbali). Choose your calculation method and Standard or Hanafi Asr explicitly; location does not choose religious preferences.
-- Automatic location follows the Mac's time zone. Manual location uses the selected IANA time zone, such as `Asia/Amman` or `America/Toronto`.
-- Prayer-time notifications and advance reminders are independently optional, both off initially. The reminder defaults to **10 minutes**. Choose banner/alert style and sound in macOS **System Settings → Notifications → PrayBar**. Focus and sleep can affect delivery.
-- Launch at login is optional. Keep PrayBar running to replenish its local notification schedule each day.
+- The menu bar shows the next prayer and the minutes left, like `Asr · 42m`. Settings can switch it to the prayer's time instead.
+- Click it for today's five prayers, your location and time zone, and Settings. After Isha it shows tomorrow's Fajr. Sunrise isn't listed.
+- The defaults are **Muslim World League** and **Standard Asr** (Shafi, Maliki, Hanbali). Pick the method and Asr you follow in Settings; Hanafi Asr is there too.
+- With automatic location, PrayBar follows your Mac's time zone. With a manual location, choose a time zone such as `Asia/Amman` or `America/Toronto`.
+- Notifications at prayer time and reminders before it (10 minutes by default) are both optional and start off. Choose banners or alerts, and the sound, in **System Settings → Notifications → PrayBar**. Focus and sleep can affect delivery.
+- Launch at login is optional. PrayBar tops up its notification schedule each day while it's running, so keep it open if you rely on reminders.
 
-PrayBar shows a clear location-needed or unavailable state when it cannot calculate a valid schedule. A failed automatic refresh retains a valid cached fix. There is no fabricated fallback timetable.
+If PrayBar can't work out your prayer times, the menu bar says so instead of guessing. If a location refresh fails, it keeps using the last good location.
 
 ## Privacy and offline use
 
-Prayer times, countdowns and notifications work offline with saved coordinates, date/time, time zone and calculation preferences. The app has no backend, analytics, accounts, prayer-time web API, or network entitlement. Preferences and the cached location stay on the Mac.
+PrayBar has no account, server or analytics, and no permission to use the network, so it can't go online at all. Prayer times, the countdown and notifications all work offline. Your settings and location stay on your Mac.
 
-macOS Location Services can need network access to acquire a new position. Automatic lookups request approximately kilometre-level accuracy and stop after success, failure, or a 30-second timeout. A fix is stale after 24 hours; refreshes happen on relevant launch/wake/time-zone events or explicit request. There is no continuous tracking. Manual location avoids those lookups. When travelling offline, update coordinates/time zone yourself if the cached location is no longer appropriate.
+Finding your location is up to macOS Location Services, which may use the network. PrayBar asks for an approximate, kilometre-level position and stops once it has one, fails, or 30 seconds pass. It looks again when it launches, when your time zone changes, when you choose **Refresh Location**, or after waking if its last position is more than a day old. It never tracks you in the background. To avoid location lookups entirely, enter your location in Settings, and update it yourself if you travel without a connection.
 
-## Build and test
+## Performance
 
-Use **Xcode 16+ / Swift 6+**. Open `PrayBar.xcodeproj`, select the shared **PrayBar** scheme and **My Mac**, or run:
+PrayBar averages about 0.01% CPU while idle and uses about 11.5 MiB of memory until Settings is opened. [praybar.com/performance](https://praybar.com/performance/) explains how this was measured and has every run and the raw data.
+
+To measure it yourself, leave PrayBar running with its menu closed, then:
+
+```sh
+mkdir -p build
+xcrun clang -O2 scripts/profile-idle.c -o build/profile-idle
+build/profile-idle $(pgrep -x PrayBar) 300 > run.csv
+python3 scripts/summarize-idle.py run.csv
+```
+
+The sampler isn't part of the app. It reads PrayBar's process counters every five seconds and reports CPU, memory, wakeups and disk I/O.
+
+## Building
+
+Use Xcode 16 or later (Swift 6). Open `PrayBar.xcodeproj` and run the **PrayBar** scheme on **My Mac**, or from the command line:
 
 ```sh
 swift test -c release --force-resolved-versions
@@ -40,47 +57,27 @@ xcodebuild -project PrayBar.xcodeproj -scheme PrayBar \
 open build/Build/Products/Release/PrayBar.app
 ```
 
-The source project uses ad-hoc signing, so a paid developer account is unnecessary for a local build. Rebuilding an ad-hoc binary can affect macOS permission grants. Quit any installed copy before running another build. App Sandbox, the location entitlement/usage descriptions, hardened runtime, and menu-bar-only configuration are included.
+Local builds are ad-hoc signed, so you don't need a paid developer account. macOS may ask for location permission again after a rebuild. Quit any installed copy before running your own.
 
-Both checked-in `Package.resolved` files pin Adhan **1.5.0**. The 32 core tests cover prayer transitions, midnight/tomorrow, DST and time-zone changes, settings changes, unavailable calculations, location failure/cancellation, local notification scheduling and timer replacement. Tests do not replace real permission, login, sleep/wake or notification-delivery checks.
+Adhan is pinned to 1.5.0 in both `Package.resolved` files. The 32 tests cover prayer transitions, midnight and tomorrow's Fajr, DST and time-zone changes, settings changes, unavailable calculations, location failures and cancellation, notification scheduling, and timers.
 
-AppKit owns the status item/menu. The SwiftUI Settings form exists only while its window is open. Cached schedules and one cancellable display timer avoid polling: clock mode waits for prayer/day boundaries; countdown mode updates about once per minute. Wake and clock/time-zone changes refresh from the current time. No helper, updater, audio player, or sleep-prevention assertion is used.
+How it fits together: AppKit runs the menu bar item and its menu, and the SwiftUI Settings window exists only while it's open. One timer drives the display. In countdown mode it fires about once a minute; in clock mode, only at the next prayer or midnight. Waking from sleep and clock or time-zone changes refresh from the current time. The app is sandboxed with only the location entitlement, and there's no helper process, updater, audio or sleep prevention.
 
-## Releases
+## Releasing
 
-Pushes to `main` and pull requests run tests and an app build. Official releases use the configured, encrypted `release` environment for Developer ID signing and Apple notarization. Push a new, unused version tag from a tested commit on `main` (increment the example version if it has already been released):
+Pushes and pull requests to `main` run the tests and build the app. To publish a release, push the next unused version tag from a tested commit on `main`:
 
 ```sh
 git tag v1.0.2
 git push origin v1.0.2
 ```
 
-The tag sets the app version automatically. The workflow signs, notarizes, checks Gatekeeper and the DMG's contents, generates a checksum, and publishes the GitHub release. The website follows the latest `PrayBar.dmg`. A manual **Release** workflow run on `main` rehearses the same process without publishing. Existing public releases are never overwritten.
+The tag sets the app's version. The release workflow signs and notarizes the app, checks it with Gatekeeper, builds the DMG and its checksum, and publishes the GitHub release. praybar.com always links to the latest `PrayBar.dmg`. Running the **Release** workflow by hand on `main` does a dry run without publishing, and existing releases are never overwritten.
 
-The environment needs secrets `SIGNING_CERTIFICATE_P12` (base64 of the password-protected Developer ID identity), `SIGNING_CERTIFICATE_PASSWORD`, `APPLE_ID`, and `NOTARIZATION_PASSWORD`; variables are `APPLE_TEAM_ID` and `SIGNING_IDENTITY`. Restrict it to `main` and `v*` tags. Only trusted maintainers should be able to change the workflows or release code. Signing secrets are never supplied to pull-request checks.
+The workflow uses a `release` environment, limited to `main` and `v*` tags, with these secrets: `SIGNING_CERTIFICATE_P12` (the password-protected Developer ID certificate, base64-encoded), `SIGNING_CERTIFICATE_PASSWORD`, `APPLE_ID` and `NOTARIZATION_PASSWORD`. Its variables are `APPLE_TEAM_ID` and `SIGNING_IDENTITY`. Pull request checks never get the signing secrets.
 
-For a local release, store credentials with `xcrun notarytool store-credentials PrayBarNotary`, run the tests, then set `SIGNING_IDENTITY` and `APPLE_TEAM_ID` when calling `scripts/release.sh VERSION BUILD_NUMBER`. Verified output goes to `build/distribution/`; the script refuses to overwrite an existing DMG. Apple's processing can outlast the 45-minute wait: inspect the saved submission ID and diagnostics before rerunning. Manual installation and feature checks still belong in the release process.
-
-## Performance verification
-
-Measure an optimized **Release build outside the debugger**. With Settings and the menu closed, observe **at least five minutes in each display mode**. Target **0.0% CPU in most idle Activity Monitor samples**, with no sustained background CPU activity. This is an acceptance target, not a guarantee of zero work; countdown redraws take occasional CPU.
-
-Record hardware, OS, build revision/configuration, start/end times and measurement method. Record cumulative CPU, memory footprint/RSS, and wakeups where available. Measure memory before opening Settings, after closing it, and after at least ten open/close cycles. Allow settling and distinguish retained framework pages from a retained view or leak. Earlier automated Settings cycles showed small native accessibility teardown allocations; behavior during ordinary manual use remains to be verified.
-
-The development-only sampler is not part of the app. Run a fresh process for each mode, leave Settings unopened for the baseline, and allow at least 35 seconds for initial location work to settle:
-
-```sh
-mkdir -p build/profiling
-xcrun clang -O2 -Wall -Wextra scripts/profile-idle.c -o build/profile-idle
-pgrep -x PrayBar
-# Replace PID and MODE with the process ID and clock/countdown:
-build/profile-idle PID 300 > build/profiling/MODE.csv
-python3 scripts/summarize-idle.py build/profiling/MODE.csv
-pmset -g assertions
-```
-
-The sampler reads process counters every five seconds and derives CPU from their deltas; stack samples alone do not measure cumulative CPU. Keep Instruments, heap scans and UI interaction separate from passive baselines, and report any tool overhead. Confirm location updates stop, no sleep assertion belongs to PrayBar, and physical sleep/wake recovers the current prayer. Fresh-account permissions, login launch and actual notification appearance also require manual verification. Label every result as measured or unverified, and keep raw machine/location logs out of commits. When profiling or GUI execution is unavailable, record that limitation rather than claiming these checks passed.
+To release from your own Mac instead, store notarization credentials with `xcrun notarytool store-credentials PrayBarNotary`, run the tests, then run `scripts/release.sh VERSION BUILD_NUMBER` with `SIGNING_IDENTITY` and `APPLE_TEAM_ID` set. The verified DMG goes to `build/distribution/`, and the script won't overwrite an existing one. If notarization takes longer than the script's 45-minute wait, check the saved submission ID before running it again.
 
 ## License
 
-[MIT](LICENSE), copyright © 2026 Mahmoud Shawa. Adhan Swift's separate [MIT notice](Resources/Adhan-LICENSE.txt) is retained. Both notices are bundled with the app.
+[MIT](LICENSE), copyright © 2026 Mahmoud Shawa. Adhan Swift's MIT notice is in [Resources/Adhan-LICENSE.txt](Resources/Adhan-LICENSE.txt). Both are included in the app.
